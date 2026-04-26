@@ -1,0 +1,57 @@
+# =========================
+# Secrets / Environment
+# =========================
+.env
+*.env
+.env.local
+
+# keep example env
+!.env.example
+
+# =========================
+# Python
+# =========================
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+
+# =========================
+# Uploads / generated files
+# =========================
+backend_api/uploads/*
+!backend_api/uploads/.gitkeep
+
+# =========================
+# React / Node
+# =========================
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# =========================
+# Logs
+# =========================
+*.log
+npm-debug.log*
+
+# =========================
+# VS Code / IDE
+# =========================
+.vscode/
+.idea/
+
+# =========================
+# OS junk
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Optional local notebooks
+# =========================
+.ipynb_checkpoints/
