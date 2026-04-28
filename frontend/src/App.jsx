@@ -6,15 +6,14 @@ import IngredientInput from "./components/IngredientInput";
 import Sidebar from "./components/Sidebar";
 import WorkflowStepper from "./components/WorkflowStepper";
 import {
-  confirmMeal,
   getHistory,
-  selectMeal,
+  sendNutritionMessage,
   startChat,
   uploadImage,
 } from "./api/client";
 
 function createThreadId() {
-  return `chef-thread-${Date.now()}`;
+  return `nutrition-thread-${Date.now()}`;
 }
 
 function mapHistoryMessages(historyPayload) {
@@ -63,24 +62,34 @@ export default function App() {
   async function handleSend({ ingredientText, imageFile }) {
     setLoading(true);
     try {
+      const hasConversation = messages.length > 0;
       let imageId = null;
-      if (imageFile) {
+
+      if (!hasConversation && imageFile) {
         const uploaded = await uploadImage(imageFile);
         imageId = uploaded.image_id;
       }
 
-      const data = await startChat({
-        thread_id: currentThreadId,
-        provider,
-        creativity_mode: creativityMode,
-        detail_mode: detailMode,
-        ingredient_text: ingredientText,
-        image_id: imageId,
-      });
+      if (!hasConversation) {
+        const data = await startChat({
+          thread_id: currentThreadId,
+          provider,
+          creativity_mode: creativityMode,
+          detail_mode: detailMode,
+          meal_text: ingredientText,
+          image_id: imageId,
+        });
+        setWorkflowStep(data.workflow_step || 1);
+      } else {
+        const data = await sendNutritionMessage({
+          thread_id: currentThreadId,
+          message: ingredientText,
+        });
+        setWorkflowStep(data.workflow_step || 2);
+      }
 
       const historyPayload = await getHistory(currentThreadId);
       setMessages(mapHistoryMessages(historyPayload));
-      setWorkflowStep(data.workflow_step || 2);
       upsertThread(
         currentThreadId,
         threadTitle === "New Chat" ? ingredientText.slice(0, 32) : threadTitle,
@@ -104,13 +113,14 @@ export default function App() {
     setSelectingMeal(true);
     setLoading(true);
     try {
-      await selectMeal({ thread_id: currentThreadId, meal_name: mealName });
-      setWorkflowStep(4);
+      await sendNutritionMessage({
+        thread_id: currentThreadId,
+        message: `Please save this nutrition case to CSV for: ${mealName}`,
+      });
 
-      await confirmMeal({ thread_id: currentThreadId });
       const historyPayload = await getHistory(currentThreadId);
       setMessages(mapHistoryMessages(historyPayload));
-      setWorkflowStep(5);
+      setWorkflowStep(3);
     } catch (error) {
       setMessages((prev) => [
         ...prev,
@@ -134,9 +144,7 @@ export default function App() {
       const historyPayload = await getHistory(threadId);
       setMessages(mapHistoryMessages(historyPayload));
       const state = historyPayload?.state;
-      if (state?.selected_meal) {
-        setWorkflowStep(5);
-      } else if (state?.last_meals?.length) {
+      if (state?.last_response) {
         setWorkflowStep(2);
       } else {
         setWorkflowStep(1);
@@ -179,7 +187,7 @@ export default function App() {
             <div>
               <h2 className="flex items-center gap-2 text-xl font-semibold text-cyan-100">
                 <Sparkles className="animate-float text-cyan-300" size={20} />
-                Futuristic AI Chef Assistant
+                Futuristic Nutrition AI Assistant
               </h2>
               <p className="text-xs text-slate-400">
                 Thread Memory ID: {currentThreadId}

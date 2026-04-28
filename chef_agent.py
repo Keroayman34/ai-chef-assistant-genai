@@ -1,33 +1,40 @@
-"""Chef agent creation and prompt logic using latest LangChain style."""
+"""Nutrition agent creation and prompt logic using latest LangChain style."""
+
+from dataclasses import dataclass
+from typing import Any
 
 from langchain.agents import create_agent
 from langchain.chat_models import init_chat_model
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
 
 from config import SETTINGS, get_temperature
-from schemas import ChefMealsResponse
+from middleware import ContextMiddleware
+from schemas import NutritionAgentResponse
+from tools import search_healthy_options, store_nutrition_case
 from utils import encode_image_to_data_url
 
 
-# 5) chef system prompt
-CHEF_SYSTEM_PROMPT = """
-You are AI Chef Assistant, a real chef persona.
-You are friendly and practical, and you never skip required workflow steps.
+# 5) nutrition system prompt
+NUTRITION_SYSTEM_PROMPT = """
+You are Nutrition AI Assistant, a friendly nutrition coach.
+You provide safe, general nutrition guidance without medical diagnosis.
+You must ALWAYS include this disclaimer in every response:
+"This is not medical or dietary advice. Consult a qualified professional."
 
 MANDATORY WORKFLOW (never skip, never reorder):
-Step 1: Analyze available ingredients.
-Step 2: Suggest meal options.
-Step 3: Ask for user preference.
-Step 4: Confirm selected meal.
-Step 5: Return final recipe.
+Step 1: Analyze the meal (text or image) and estimate nutrition values.
+Step 2: Answer user questions, optionally using tools.
+Step 3: If the user requests storage, confirm and use the CSV tool.
 
 Rules:
 - Always respect workflow_step provided by developer/user messages.
-- If the current step is not enough to continue, ask only what is needed for the next step.
+- If the current step is not enough to continue, ask only what is needed next.
 - Keep output in the required structured format.
-- Ingredient status must be either 'available' or 'not_available'.
-- Never invent unavailable ingredients as available.
+- Always fill the NutritionAgentResponse fields: action_taken, should_store, disclaimer.
+- Use search_results when the search tool is used.
+- Never provide strict diet plans or medical diagnoses.
+- Ask before storing to CSV unless the user explicitly requested it.
 """.strip()
 
 
@@ -59,29 +66,42 @@ def init_model(provider: str, creativity_mode: str):
     raise ValueError("provider must be 'openai' or 'ollama'")
 
 
-def create_chef_agent(provider: str, creativity_mode: str, detail_mode: str):
+@dataclass
+class NutritionAgentBundle:
+    """Simple container for agent + context middleware."""
+
+    agent: Any
+    context: ContextMiddleware
+
+
+def create_chef_agent(provider: str, creativity_mode: str, detail_mode: str) -> NutritionAgentBundle:
     """6) create agent + 7) memory with InMemorySaver."""
     model = init_model(provider=provider, creativity_mode=creativity_mode)
+    summary_model = init_model(provider=provider, creativity_mode="strict")
     checkpointer = InMemorySaver()
 
-    system_prompt = f"{CHEF_SYSTEM_PROMPT}\n\nStyle: {build_style_prompt(detail_mode)}"
+    system_prompt = f"{NUTRITION_SYSTEM_PROMPT}\n\nStyle: {build_style_prompt(detail_mode)}"
 
     agent = create_agent(
         model=model,
-        tools=[],
+        tools=[search_healthy_options, store_nutrition_case],
         system_prompt=system_prompt,
         checkpointer=checkpointer,
-        response_format=ChefMealsResponse,
+        response_format=NutritionAgentResponse,
     )
-    return agent
+
+    context = ContextMiddleware(
+        summary_model=summary_model,
+        max_messages=SETTINGS.max_context_messages,
+        summary_trigger=SETTINGS.summary_trigger,
+    )
+
+    return NutritionAgentBundle(agent=agent, context=context)
 
 
-def build_ingredient_message(ingredient_text: str, image_path: str | None):
-    """8) optional image input support.
-
-    For OpenAI vision-capable chat models, send mixed text + image message.
-    """
-    ingredient_text = ingredient_text.strip()
+def build_meal_message(meal_text: str, image_path: str | None):
+    """Optional image input support for meal analysis."""
+    meal_text = meal_text.strip()
 
     if image_path:
         data_url = encode_image_to_data_url(image_path)
@@ -91,8 +111,10 @@ def build_ingredient_message(ingredient_text: str, image_path: str | None):
                     "type": "text",
                     "text": (
                         "workflow_step=1\n"
-                        "Analyze these ingredients from text and image. "
-                        f"User text: {ingredient_text}"
+                        "Analyze this meal from text and image. "
+                        "Return NutritionAgentResponse with analysis filled, "
+                        "search_results empty, and a required disclaimer. "
+                        f"User text: {meal_text}"
                     ),
                 },
                 {
@@ -105,62 +127,57 @@ def build_ingredient_message(ingredient_text: str, image_path: str | None):
     return HumanMessage(
         content=(
             "workflow_step=1\n"
-            "Analyze these ingredients from text only. "
-            f"User text: {ingredient_text}"
+            "Analyze this meal from text only. "
+            "Return NutritionAgentResponse with analysis filled, "
+            "search_results empty, and a required disclaimer. "
+            f"User text: {meal_text}"
         )
     )
 
 
-def run_agent_step(agent, thread_id: str, prompt_text: str):
-    """Helper to invoke the same conversation thread."""
-    return agent.invoke(
-        {"messages": [HumanMessage(content=prompt_text)]},
+def run_agent_turn(bundle: NutritionAgentBundle, thread_id: str, user_message: HumanMessage):
+    """Invoke the agent with context trimming + summarization."""
+    messages = bundle.context.build_messages(thread_id=thread_id, new_message=user_message)
+
+    result = bundle.agent.invoke(
+        {"messages": messages},
         config={"configurable": {"thread_id": thread_id}},
     )
 
+    assistant_message = None
+    if isinstance(result, dict) and result.get("messages"):
+        assistant_message = result["messages"][-1]
 
-def run_step_1_and_2(agent, thread_id: str, ingredient_text: str, image_path: str | None = None):
-    """Run workflow step 1 + step 2 and return structured meals."""
-    ingredient_msg = build_ingredient_message(ingredient_text=ingredient_text, image_path=image_path)
+    if assistant_message is None:
+        assistant_message = AIMessage(content=str(result.get("structured_response")))
 
-    result = agent.invoke(
-        {
-            "messages": [
-                ingredient_msg,
-                HumanMessage(
-                    content=(
-                        "workflow_step=2\n"
-                        "Now suggest meal options using only available ingredients where possible. "
-                        "Return structured meals list."
-                    )
-                ),
-            ]
-        },
-        config={"configurable": {"thread_id": thread_id}},
-    )
+    bundle.context.update(thread_id=thread_id, user_message=user_message, assistant_message=assistant_message)
+    return result
+
+
+def run_nutrition_analysis(
+    bundle: NutritionAgentBundle,
+    thread_id: str,
+    meal_text: str,
+    image_path: str | None = None,
+):
+    """Step 1: analyze a meal and return structured nutrition response."""
+    meal_msg = build_meal_message(meal_text=meal_text, image_path=image_path)
+
+    result = run_agent_turn(bundle=bundle, thread_id=thread_id, user_message=meal_msg)
     return result.get("structured_response")
 
 
-def run_step_4_and_5(agent, thread_id: str, meal_name: str):
-    """Run workflow step 4 + step 5 and return final recipe."""
-    result = agent.invoke(
-        {
-            "messages": [
-                HumanMessage(
-                    content=(
-                        "workflow_step=4\n"
-                        f"I choose this meal: {meal_name}. Confirm it briefly."
-                    )
-                ),
-                HumanMessage(
-                    content=(
-                        "workflow_step=5\n"
-                        "Now return the final recipe for only the selected meal in the same structured format. "
-                        "Return exactly one meal in meals list."
-                    )
-                ),
-            ]
-        },
-        config={"configurable": {"thread_id": thread_id}},
+def run_nutrition_followup(bundle: NutritionAgentBundle, thread_id: str, question: str):
+    """Step 2: handle user questions or requests with tools if needed."""
+    question = question.strip()
+    user_msg = HumanMessage(
+        content=(
+            "workflow_step=2\n"
+            "Use tools if needed. Return NutritionAgentResponse. "
+            f"User question: {question}"
+        )
     )
+
+    result = run_agent_turn(bundle=bundle, thread_id=thread_id, user_message=user_msg)
     return result.get("structured_response")

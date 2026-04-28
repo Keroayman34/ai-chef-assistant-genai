@@ -1,4 +1,4 @@
-"""FastAPI wrapper for the existing AI Chef Assistant logic."""
+"""FastAPI wrapper for the Nutrition AI Assistant logic."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from chef_agent import create_chef_agent, run_step_1_and_2, run_step_4_and_5
+from chef_agent import create_chef_agent, run_nutrition_analysis, run_nutrition_followup
 
 APP_ROOT = Path(__file__).resolve().parent.parent
 UPLOAD_DIR = APP_ROOT / "backend_api" / "uploads"
@@ -19,32 +19,28 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class StartChatRequest(BaseModel):
-    thread_id: str = Field(default="chef-thread-1")
+    thread_id: str = Field(default="nutrition-thread-1")
     provider: Literal["openai", "ollama"] = Field(default="openai")
     creativity_mode: Literal["strict", "creative"] = Field(default="strict")
     detail_mode: Literal["concise", "detailed"] = Field(default="concise")
-    ingredient_text: str
+    meal_text: str
     image_id: str | None = None
 
 
-class SelectMealRequest(BaseModel):
+class AskNutritionRequest(BaseModel):
     thread_id: str
-    meal_name: str
-
-
-class ConfirmMealRequest(BaseModel):
-    thread_id: str
+    message: str
 
 
 class ThreadState(BaseModel):
     provider: Literal["openai", "ollama"]
     creativity_mode: Literal["strict", "creative"]
     detail_mode: Literal["concise", "detailed"]
-    last_meals: list[dict[str, Any]] = Field(default_factory=list)
-    selected_meal: str | None = None
+    last_response: dict[str, Any] | None = None
+    summary: str | None = None
 
 
-class ChefSessionManager:
+class NutritionSessionManager:
     """Small in-memory manager to keep thread/session state beginner-friendly."""
 
     def __init__(self) -> None:
@@ -86,9 +82,9 @@ class ChefSessionManager:
         return self._threads.get(thread_id)
 
 
-session_manager = ChefSessionManager()
+session_manager = NutritionSessionManager()
 
-app = FastAPI(title="AI Chef Assistant API", version="1.0.0")
+app = FastAPI(title="Nutrition AI Assistant API", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -121,7 +117,7 @@ async def upload_image(file: UploadFile = File(...)) -> dict[str, str]:
 
 @app.post("/chat/start")
 def chat_start(request: StartChatRequest) -> dict[str, Any]:
-    agent = session_manager.get_agent(
+    agent_bundle = session_manager.get_agent(
         provider=request.provider,
         creativity_mode=request.creativity_mode,
         detail_mode=request.detail_mode,
@@ -135,17 +131,17 @@ def chat_start(request: StartChatRequest) -> dict[str, Any]:
         else:
             raise HTTPException(status_code=404, detail="Uploaded image not found.")
 
-    meals_response = run_step_1_and_2(
-        agent=agent,
+    nutrition_response = run_nutrition_analysis(
+        bundle=agent_bundle,
         thread_id=request.thread_id,
-        ingredient_text=request.ingredient_text,
+        meal_text=request.meal_text,
         image_path=image_path,
     )
 
-    if meals_response is None or not meals_response.meals:
-        raise HTTPException(status_code=500, detail="No meals returned by the model.")
+    if nutrition_response is None:
+        raise HTTPException(status_code=500, detail="No nutrition response returned by the model.")
 
-    meals_dict = meals_response.model_dump()
+    response_dict = nutrition_response.model_dump()
 
     session_manager.set_thread_state(
         request.thread_id,
@@ -153,108 +149,76 @@ def chat_start(request: StartChatRequest) -> dict[str, Any]:
             provider=request.provider,
             creativity_mode=request.creativity_mode,
             detail_mode=request.detail_mode,
-            last_meals=meals_dict["meals"],
+            last_response=response_dict,
+            summary=agent_bundle.context.get_summary(request.thread_id),
         ),
     )
 
     session_manager.add_history(
         request.thread_id,
         role="user",
-        content=request.ingredient_text,
-        payload={"type": "ingredients"},
+        content=request.meal_text,
+        payload={"type": "meal"},
     )
     session_manager.add_history(
         request.thread_id,
         role="assistant",
-        content="Here are meal suggestions based on your ingredients.",
-        payload={"type": "meals", "data": meals_dict["meals"]},
+        content=nutrition_response.action_taken,
+        payload={"type": "nutrition", "data": response_dict},
     )
 
     return {
         "thread_id": request.thread_id,
-        "workflow_step": 2,
-        "meals": meals_dict["meals"],
-        "message": "Meal suggestions ready.",
+        "workflow_step": 1,
+        "nutrition": response_dict,
+        "message": "Nutrition analysis ready.",
     }
 
 
-@app.post("/chat/select-meal")
-def chat_select_meal(request: SelectMealRequest) -> dict[str, Any]:
+@app.post("/chat/message")
+def chat_message(request: AskNutritionRequest) -> dict[str, Any]:
     state = session_manager.get_thread_state(request.thread_id)
     if state is None:
         raise HTTPException(status_code=404, detail="Thread not found. Start chat first.")
 
-    meal_exists = any(m.get("meal_name") == request.meal_name for m in state.last_meals)
-    if not meal_exists:
-        raise HTTPException(status_code=400, detail="Selected meal is not in current suggestions.")
-
-    state.selected_meal = request.meal_name
-    session_manager.set_thread_state(request.thread_id, state)
-
-    session_manager.add_history(
-        request.thread_id,
-        role="user",
-        content=f"I choose: {request.meal_name}",
-        payload={"type": "selected_meal", "meal_name": request.meal_name},
-    )
-    session_manager.add_history(
-        request.thread_id,
-        role="assistant",
-        content=f"Great choice: {request.meal_name}. Please confirm to generate full recipe.",
-        payload={"type": "confirm_prompt", "meal_name": request.meal_name},
-    )
-
-    return {
-        "thread_id": request.thread_id,
-        "workflow_step": 4,
-        "selected_meal": request.meal_name,
-        "message": f"Meal '{request.meal_name}' selected. Please confirm.",
-    }
-
-
-@app.post("/chat/confirm")
-def chat_confirm(request: ConfirmMealRequest) -> dict[str, Any]:
-    state = session_manager.get_thread_state(request.thread_id)
-    if state is None:
-        raise HTTPException(status_code=404, detail="Thread not found. Start chat first.")
-    if not state.selected_meal:
-        raise HTTPException(status_code=400, detail="No selected meal. Call /chat/select-meal first.")
-
-    agent = session_manager.get_agent(
+    agent_bundle = session_manager.get_agent(
         provider=state.provider,
         creativity_mode=state.creativity_mode,
         detail_mode=state.detail_mode,
     )
 
-    final_recipe = run_step_4_and_5(
-        agent=agent,
+    nutrition_response = run_nutrition_followup(
+        bundle=agent_bundle,
         thread_id=request.thread_id,
-        meal_name=state.selected_meal,
+        question=request.message,
     )
 
-    if final_recipe is None or not final_recipe.meals:
-        raise HTTPException(status_code=500, detail="No recipe returned by the model.")
+    if nutrition_response is None:
+        raise HTTPException(status_code=500, detail="No response returned by the model.")
 
-    recipe_dict = final_recipe.model_dump()
+    response_dict = nutrition_response.model_dump()
+    state.last_response = response_dict
+    state.summary = agent_bundle.context.get_summary(request.thread_id)
+    session_manager.set_thread_state(request.thread_id, state)
 
     session_manager.add_history(
         request.thread_id,
         role="user",
-        content=f"Confirm meal: {state.selected_meal}",
-        payload={"type": "confirm_meal", "meal_name": state.selected_meal},
+        content=request.message,
+        payload={"type": "question"},
     )
     session_manager.add_history(
         request.thread_id,
         role="assistant",
-        content="Your final recipe is ready.",
-        payload={"type": "recipe", "data": recipe_dict["meals"][0]},
+        content=nutrition_response.action_taken,
+        payload={"type": "nutrition", "data": response_dict},
     )
 
     return {
         "thread_id": request.thread_id,
-        "workflow_step": 5,
-        "recipe": recipe_dict["meals"][0],
-        "message": "Recipe ready.",
+        "workflow_step": 2,
+        "nutrition": response_dict,
+        "message": "Nutrition response ready.",
     }
 
 

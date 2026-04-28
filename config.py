@@ -21,6 +21,13 @@ class ModelSettings:
     strict_temperature: float = 0.1
     creative_temperature: float = 0.8
 
+    # context optimization settings
+    max_context_messages: int = 10
+    summary_trigger: int = 8
+
+    # CSV storage
+    nutrition_csv_path: str = "data/nutrition_cases.csv"
+
 
 SETTINGS = ModelSettings()
 

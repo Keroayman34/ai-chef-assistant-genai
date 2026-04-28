@@ -1,5 +1,7 @@
 import { ChefHat, UserRound } from "lucide-react";
 import MealCard from "./MealCard";
+import NutritionCard from "./NutritionCard";
+import SearchResultsCard from "./SearchResultsCard";
 
 export default function MessageBubble({
   message,
@@ -8,6 +10,7 @@ export default function MessageBubble({
 }) {
   const isUser = message.role === "user";
   const payloadType = message.payload?.type;
+  const nutritionPayload = message.payload?.data;
 
   return (
     <div className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"}`}>
@@ -41,6 +44,27 @@ export default function MessageBubble({
 
         {payloadType === "recipe" && message.payload.data && (
           <MealCard meal={message.payload.data} isRecipe />
+        )}
+
+        {payloadType === "nutrition" && nutritionPayload && (
+          <div className="space-y-3">
+            <NutritionCard
+              analysis={nutritionPayload.analysis}
+              onSaveCase={onChooseMeal}
+              disabled={selectingMeal}
+            />
+            <SearchResultsCard results={nutritionPayload.search_results} />
+            {nutritionPayload.storage_message && (
+              <div className="rounded-xl border border-emerald-300/20 bg-emerald-400/10 p-3 text-xs text-emerald-200">
+                {nutritionPayload.storage_message}
+              </div>
+            )}
+            {nutritionPayload.disclaimer && (
+              <div className="rounded-xl border border-white/10 bg-slate-900/70 p-3 text-[11px] text-slate-400">
+                {nutritionPayload.disclaimer}
+              </div>
+            )}
+          </div>
         )}
       </div>
 

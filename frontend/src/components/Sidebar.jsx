@@ -12,7 +12,7 @@ export default function Sidebar({
     <aside className="glass-card flex h-full w-full flex-col p-4 lg:max-w-xs">
       <div className="mb-4 flex items-center gap-2">
         <ChefHat className="text-cyan-300" size={20} />
-        <h1 className="text-lg font-semibold">AI Chef</h1>
+        <h1 className="text-lg font-semibold">Nutrition AI</h1>
       </div>
 
       <button

@@ -11,10 +11,10 @@ export default function ChatWindow({
       {messages.length === 0 && (
         <div className="m-auto text-center text-slate-400">
           <p className="text-lg font-semibold text-cyan-200">
-            👨‍🍳 Welcome to AI Chef Assistant
+            🥗 Welcome to Nutrition AI Assistant
           </p>
           <p className="text-sm">
-            Share ingredients and get beautiful meal ideas.
+            Describe a meal and get a nutrition breakdown.
           </p>
         </div>
       )}
@@ -33,7 +33,7 @@ export default function ChatWindow({
           <span className="inline-block h-2.5 w-2.5 animate-bounce rounded-full bg-cyan-300" />
           <span className="inline-block h-2.5 w-2.5 animate-bounce rounded-full bg-cyan-300 [animation-delay:120ms]" />
           <span className="inline-block h-2.5 w-2.5 animate-bounce rounded-full bg-cyan-300 [animation-delay:240ms]" />
-          Chef is thinking...
+          Nutrition agent is thinking...
         </div>
       )}
     </div>

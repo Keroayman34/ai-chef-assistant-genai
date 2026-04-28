@@ -31,18 +31,8 @@ export async function startChat(payload) {
   return parseJsonResponse(response);
 }
 
-export async function selectMeal(payload) {
-  const response = await fetch(`${API_BASE_URL}/chat/select-meal`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-
-  return parseJsonResponse(response);
-}
-
-export async function confirmMeal(payload) {
-  const response = await fetch(`${API_BASE_URL}/chat/confirm`, {
+export async function sendNutritionMessage(payload) {
+  const response = await fetch(`${API_BASE_URL}/chat/message`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),

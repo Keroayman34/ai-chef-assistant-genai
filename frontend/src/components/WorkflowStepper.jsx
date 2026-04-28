@@ -1,9 +1,8 @@
 const steps = [
-  "Analyze Ingredients",
-  "Suggest Meals",
-  "Choose Meal",
-  "Confirm Meal",
-  "Recipe Ready",
+  "Analyze Meal",
+  "Nutrition Summary",
+  "Follow-up Questions",
+  "Tools & Storage",
 ];
 
 export default function WorkflowStepper({ currentStep = 1 }) {

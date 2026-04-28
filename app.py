@@ -1,11 +1,11 @@
-"""CLI entry point for AI Chef Assistant."""
+"""CLI entry point for Nutrition AI Assistant."""
 
-from chef_agent import create_chef_agent, run_step_1_and_2, run_step_4_and_5
-from utils import normalize_mode, print_final_recipe, print_meals
+from chef_agent import create_chef_agent, run_nutrition_analysis, run_nutrition_followup
+from utils import normalize_mode, print_nutrition_analysis
 
 
 def main() -> None:
-    print("=== AI Chef Assistant ===")
+    print("=== Nutrition AI Assistant ===")
     print("This lab has two backends: OpenAI and Ollama (mistral).")
 
     provider = input("Choose backend (openai/ollama) [openai]: ").strip().lower() or "openai"
@@ -23,56 +23,55 @@ def main() -> None:
         default="concise",
     )
 
-    thread_id = input("Thread id for memory [chef-thread-1]: ").strip() or "chef-thread-1"
+    thread_id = input("Thread id for memory [nutrition-thread-1]: ").strip() or "nutrition-thread-1"
 
-    print("\nInitializing chef agent...")
-    agent = create_chef_agent(
+    print("\nInitializing nutrition agent...")
+    agent_bundle = create_chef_agent(
         provider=provider,
         creativity_mode=creativity_mode,
         detail_mode=detail_mode,
     )
 
-    # Step 1: Analyze ingredients
-    ingredient_text = input("\nEnter available ingredients (comma-separated): ").strip()
+    # Step 1: Analyze meal
+    meal_text = input("\nDescribe your meal (or ingredients): ").strip()
 
     # Step 8 optional image support
-    image_path = input("Optional ingredient image path (or press Enter to skip): ").strip() or None
+    image_path = input("Optional food image path (or press Enter to skip): ").strip() or None
     if provider == "ollama" and image_path:
         print("Note: image input may not be supported on your local mistral setup. Continuing anyway.")
 
-    # Step 2: Suggest meals
-    meals_response = run_step_1_and_2(
-        agent=agent,
+    # Step 2: Nutrition analysis
+    analysis = run_nutrition_analysis(
+        bundle=agent_bundle,
         thread_id=thread_id,
-        ingredient_text=ingredient_text,
+        meal_text=meal_text,
         image_path=image_path,
     )
 
-    if not meals_response or not meals_response.meals:
-        print("No meals returned by the model.")
+    if not analysis:
+        print("No nutrition analysis returned by the model.")
         return
 
-    print_meals(meals_response)
+    print_nutrition_analysis(analysis)
 
-    # Step 3: Ask user preference
-    print("\nStep 3: Which suggested meal do you prefer?")
-    choice_raw = input("\nPick meal number: ").strip()
-    try:
-        idx = max(1, min(int(choice_raw), len(meals_response.meals)))
-    except ValueError:
-        idx = 1
+    # Step 3: Follow-up questions
+    while True:
+        followup = input("\nAsk a nutrition question (or press Enter to exit): ").strip()
+        if not followup:
+            break
 
-    selected_meal = meals_response.meals[idx - 1].meal_name
-
-    # Step 4 + Step 5
-    confirmation = input(f"Confirm meal '{selected_meal}'? (yes/no) [yes]: ").strip().lower() or "yes"
-    if confirmation not in {"yes", "y"}:
-        print("Okay, run again and pick another meal.")
-        return
-
-    final_recipe = run_step_4_and_5(agent=agent, thread_id=thread_id, meal_name=selected_meal)
-    print_final_recipe(final_recipe)
+        response = run_nutrition_followup(
+            bundle=agent_bundle,
+            thread_id=thread_id,
+            question=followup,
+        )
+        if response:
+            print_nutrition_analysis(response)
+        else:
+            print("No response returned by the model.")
 
 
 if __name__ == "__main__":
     main()
+
+
