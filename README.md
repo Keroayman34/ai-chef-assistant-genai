@@ -1,148 +1,224 @@
-# AI Chef Assistant
+# AI Chef Assistant -> Nutrition AI Agent
 
-Beginner-friendly modular Python version of the instructor GenAI lab (without notebook).
+Agentic Generative AI project built through Advanced GenAI labs.
 
-## Project Structure
+Started as an AI Chef Assistant (Day 1) and evolved into a Nutrition AI Agent with tools, memory, context engineering, and fullstack UI (Day 2).
 
-- app.py
-- chef_agent.py
-- schemas.py
-- config.py
-- utils.py
-- requirements.txt
-- .env.example
-- README.md
+---
 
-## Tech Used
+# Features
 
-- Python
-- LangChain
-- langchain_openai
-- langgraph memory/checkpointer (`InMemorySaver`)
-- Pydantic structured output
-- langchain-ollama
-- python-dotenv
+## Day 1 — AI Chef Assistant
+- Ingredient analysis from text/image
+- Guided meal workflow:
+  1. Analyze ingredients  
+  2. Suggest meals  
+  3. User selects  
+  4. Confirm meal  
+  5. Return recipe  
 
-## What the app does
+- Conversation memory using thread_id  
+- Structured outputs with Pydantic  
+- OpenAI + Ollama support  
+- CLI + React UI
 
-- Accepts ingredients from text (and optional image)
-- Follows strict conversation workflow (never skips):
-  1. Analyze ingredients
-  2. Suggest meals
-  3. Ask user preference
-  4. Confirm meal
-  5. Return final recipe
-- Remembers context by `thread_id`
-- Supports strict vs creative mode
-- Supports concise vs detailed mode
-- Supports OpenAI and Ollama (mistral) with the same flow
+---
 
-## Setup in VS Code
+## Day 2 — Nutrition AI Agent Upgrade
+Added:
 
-1. Open this folder in VS Code.
-2. Create a virtual environment.
-3. Install dependencies:
+- Nutrition analysis (calories, protein, carbs, fat)
+- Tool Calling Agent
+- Healthy restaurant / grocery search tool
+- CSV nutrition storage tool
+- Context engineering
+- Message trimming + summarization memory
+- Multi-modal food analysis
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+Example:
 
-4. Create `.env` from `.env.example` and add your OpenAI key:
-
-   ```env
-   OPENAI_API_KEY=your_real_key_here
-   ```
-
-## Run OpenAI Version
-
-```bash
-python app.py
+```text
+2 eggs, avocado toast, orange juice
 ```
 
-When prompted:
+Returns nutrition summary + recommendations.
 
-- choose `openai`
-- choose mode values
-- enter ingredients
-- optionally add image path
+---
 
-## New Web App Upgrade (FastAPI + React)
+# Tech Stack
 
-This project now includes:
+## Backend
+- Python
+- LangChain
+- LangGraph
+- FastAPI
+- Pydantic
+- OpenAI / Ollama
 
-- `backend_api/` (FastAPI wrapper reusing existing agent logic)
-- `frontend/` (Vite + React + Tailwind UI)
+## Frontend
+- React
+- Vite
+- Tailwind
 
-### 1) Install Python dependencies
+---
+
+# Architecture
+
+```text
+User
+↓
+React / CLI
+↓
+FastAPI
+↓
+AI Agent
+├─ Memory
+├─ Tool Calling
+├─ Context Optimization
+└─ Structured Outputs
+```
+
+---
+
+# Project Structure
+
+```bash
+app.py
+chef_agent.py
+schemas.py
+config.py
+utils.py
+tools.py
+middleware.py
+backend_api/
+frontend/
+```
+
+---
+
+# Concepts Implemented
+
+## Day 1
+- Prompt Engineering
+- Structured Outputs
+- Memory
+- Multimodal Inputs
+
+## Day 2
+- Agents
+- Tools
+- ReAct-style Tool Calling
+- Context Engineering
+- Middleware
+- Summarization Memory
+
+---
+
+# Run Project
+
+## Install
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2) Run FastAPI backend
+Create:
 
-From project root:
-
-```bash
-uvicorn backend_api.main:app --reload --host 127.0.0.1 --port 8000
+```env
+OPENAI_API_KEY=your_key_here
 ```
 
-API endpoints:
+---
 
-- `POST /chat/start`
-- `POST /chat/select-meal`
-- `POST /chat/confirm`
-- `POST /upload-image`
-- `GET /history/{thread_id}`
-
-### 3) Run React frontend
-
-Open a second terminal:
-
-```bash
-cd frontend
-cp .env.example .env
-npm install
-npm run dev
-```
-
-Frontend runs on `http://127.0.0.1:5173`.
-
-### 4) Backend + frontend connection
-
-- Frontend uses `VITE_API_BASE_URL` in `frontend/.env`
-- Default value: `http://127.0.0.1:8000`
-- CORS is already enabled in backend for:
-  - `http://localhost:5173`
-  - `http://127.0.0.1:5173`
-
-### 5) Keep CLI version unchanged
-
-Your original CLI flow still works:
+## Run CLI
 
 ```bash
 python app.py
 ```
 
-## Run Ollama Version (mistral)
+---
 
-1. Install Ollama from official site.
-2. Pull model:
+## Run Backend
 
-   ```bash
-   ollama pull mistral
-   ```
+```bash
+uvicorn backend_api.main:app --reload
+```
 
-3. Start using the same app:
+Endpoints:
 
-   ```bash
-   python app.py
-   ```
+```http
+POST /nutrition/analyze
+POST /nutrition/search
+POST /nutrition/store
+GET /history/{thread_id}
+```
 
-4. When prompted, choose `ollama`.
+---
 
-## Notes
+## Run Frontend
 
-- OpenAI key is loaded from `.env` using `python-dotenv`.
-- Image input support is optional and depends on model capability.
-- The code is intentionally simple with many comments for learning.
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Runs on:
+
+```text
+http://127.0.0.1:5173
+```
+
+---
+
+# Example Flow
+
+```text
+User enters meal
+↓
+Agent analyzes nutrition
+↓
+User asks healthy nearby food
+↓
+Agent calls search tool
+↓
+User stores nutrition summary
+```
+
+---
+
+# Safety
+- No medical diagnosis
+- No strict diet plans
+
+Disclaimer:
+
+```text
+This is not medical advice.
+Consult a qualified professional.
+```
+
+---
+
+# Git Workflow
+
+```bash
+main
+feature/backend-cli
+feature/day2-nutrition-agent
+```
+
+---
+
+# Future Roadmap
+Planned:
+- RAG
+- Vector databases
+- Long-term memory
+- Multi-agent systems
+
+Repository will continue evolving through the course.
+
+---
+
+Built as part of Advanced Generative AI labs.
