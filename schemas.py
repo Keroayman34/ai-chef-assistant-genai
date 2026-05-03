@@ -83,6 +83,68 @@ class NutritionAgentResponse(BaseModel):
     action_taken: str = Field(description="What the agent did this turn")
     should_store: bool = Field(description="Whether the agent wants to store to CSV")
     storage_message: str | None = Field(default=None, description="Storage confirmation message")
+    source_used: Literal["file", "database", "search", "none"] | None = Field(
+        default=None,
+        description="Primary source used for answering the user's question"
+    )
+    confidence: Literal["high", "medium", "low"] | None = Field(
+        default=None,
+        description="Confidence level of the response"
+    )
+    references: List[str] = Field(
+        default_factory=list,
+        description="Short list of references or source titles"
+    )
     disclaimer: str = Field(
         description="Required disclaimer text"
+    )
+
+# ====================== NEW DAY 3: RAG & MULTI-SOURCE SCHEMAS ======================
+
+
+class SourceInfo(BaseModel):
+    """Information about the source of nutrition data."""
+
+    source_type: Literal["database", "file", "search", "estimation"] = Field(
+        description="Where the information came from"
+    )
+    source_name: str = Field(description="Name of the specific source (e.g., 'nutrition_guide', 'online search')")
+    confidence: Literal["high", "medium", "low"] = Field(
+        default="medium",
+        description="Confidence level in the accuracy of the information"
+    )
+
+
+class Reference(BaseModel):
+    """A reference or citation for nutrition information."""
+
+    title: str = Field(description="Reference title or food name")
+    url: str | None = Field(default=None, description="URL if available")
+    source_type: str = Field(description="Type of source (document, database, web)")
+
+
+class NutritionAnswer(BaseModel):
+    """
+    Structured answer from the nutrition AI agent with source tracking.
+    
+    Extends the existing NutritionAgentResponse with RAG source information.
+    """
+
+    answer: str = Field(description="The main answer to the user's nutrition question")
+    source_info: SourceInfo = Field(description="Information about where this answer came from")
+    confidence: Literal["high", "medium", "low"] = Field(
+        default="medium",
+        description="Overall confidence in this answer"
+    )
+    references: List[Reference] = Field(
+        default_factory=list,
+        description="List of references or citations"
+    )
+    tool_calls_used: List[str] = Field(
+        default_factory=list,
+        description="Which tools were called (search_local_docs, search_food_database, search_online, etc.)"
+    )
+    explanation: str | None = Field(
+        default=None,
+        description="Brief explanation of how the answer was derived"
     )

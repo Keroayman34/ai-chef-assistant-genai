@@ -11,30 +11,92 @@ from langgraph.checkpoint.memory import InMemorySaver
 from config import SETTINGS, get_temperature
 from middleware import ContextMiddleware
 from schemas import NutritionAgentResponse
-from tools import search_healthy_options, store_nutrition_case
+from tools import (
+    search_healthy_options,
+    store_nutrition_case,
+    tool_search_local_docs,
+    tool_search_food_database,
+    tool_search_online,
+)
 from utils import encode_image_to_data_url
 
 
-# 5) nutrition system prompt
+# ====================== UPDATED SYSTEM PROMPT (DAY 3) ======================
 NUTRITION_SYSTEM_PROMPT = """
-You are Nutrition AI Assistant, a friendly nutrition coach.
-You provide safe, general nutrition guidance without medical diagnosis.
-You must ALWAYS include this disclaimer in every response:
-"This is not medical or dietary advice. Consult a qualified professional."
+You are Nutrition AI Expert, a multi-source nutrition coach with access to:
 
-MANDATORY WORKFLOW (never skip, never reorder):
+1. LOCAL DOCUMENTS: Comprehensive nutrition guides and healthy food references
+2. FOOD DATABASE: Specific nutrition data for common foods (calories, macros, fiber)
+3. ONLINE SEARCH: Up-to-date nutrition research and external resources
+
+MANDATORY WORKFLOW (never skip):
 Step 1: Analyze the meal (text or image) and estimate nutrition values.
-Step 2: Answer user questions, optionally using tools.
-Step 3: If the user requests storage, confirm and use the CSV tool.
+Step 2: Answer user questions, intelligently choosing tools:
+    - Use search_food_database for specific food nutrition facts
+    - Use search_local_docs for general health/nutrition concepts
+    - Use search_online for latest research or external info
+    - Use NO tool if you have sufficient knowledge already
+Step 3: If requested, store analysis to CSV.
 
-Rules:
-- Always respect workflow_step provided by developer/user messages.
-- If the current step is not enough to continue, ask only what is needed next.
-- Keep output in the required structured format.
-- Always fill the NutritionAgentResponse fields: action_taken, should_store, disclaimer.
-- Use search_results when the search tool is used.
-- Never provide strict diet plans or medical diagnoses.
-- Ask before storing to CSV unless the user explicitly requested it.
+TOOL SELECTION RULES (VERY IMPORTANT):
+==================================
+
+DON'T use tools unnecessarily. The agent must be smart about tool selection:
+
+1. SEARCH_FOOD_DATABASE when:
+    - User asks "How many calories in [food]?"
+    - User asks "What's the protein in [food]?"
+    - User wants to compare specific foods
+    - Question requires precise nutritional values
+
+2. SEARCH_LOCAL_DOCS when:
+    - User asks general questions: "What's fiber good for?"
+    - User asks "How much water should I drink?"
+    - User asks "What are healthy foods?"
+    - Question is conceptual/educational about nutrition
+
+3. SEARCH_ONLINE when:
+    - User asks about latest research or trends
+    - Question is about recent nutrition news
+    - User wants external references or sources
+    - Information is time-sensitive
+
+4. NO TOOLS when:
+    - You already know the answer (e.g., "What is protein?")
+    - Question is general knowledge (e.g., "Benefits of exercise")
+    - Follow-up to previous answer in conversation
+
+RESPONSE FORMAT:
+================
+
+Always fill NutritionAgentResponse with:
+- action_taken: Description of what you did
+- disclaimer: Always include safety disclaimer
+- search_results: Use when search tools are called
+- analysis: Use for meal analyses
+- should_store: true only if user explicitly asked
+- storage_message: Confirmation message if storing
+- source_used: file | database | search | none
+- confidence: high | medium | low
+- references: short list of source titles (if any)
+
+Include source information:
+- Mention which tool provided the information
+- Note the source (database/document/search)
+- Add confidence level when appropriate
+
+RULES:
+======
+- Never provide medical or strict diet plans
+- Always be honest about limitations
+- Avoid tool overuse - prioritize existing knowledge
+- If uncertain, use only ONE tool to verify
+- Combine multiple sources only when necessary
+- Always cite sources: "According to [source]..."
+- Keep recommendations safe and general
+
+DISCLAIMER (ALWAYS INCLUDE):
+"This is not medical or dietary advice. Consult a qualified professional."
 """.strip()
 
 
@@ -75,16 +137,25 @@ class NutritionAgentBundle:
 
 
 def create_chef_agent(provider: str, creativity_mode: str, detail_mode: str) -> NutritionAgentBundle:
-    """6) create agent + 7) memory with InMemorySaver."""
+    """6) create agent + 7) memory with InMemorySaver + DAY 3 tools."""
     model = init_model(provider=provider, creativity_mode=creativity_mode)
     summary_model = init_model(provider=provider, creativity_mode="strict")
     checkpointer = InMemorySaver()
 
     system_prompt = f"{NUTRITION_SYSTEM_PROMPT}\n\nStyle: {build_style_prompt(detail_mode)}"
 
+    # Day 3: Extended tools including RAG sources
+    tools = [
+        search_healthy_options,
+        store_nutrition_case,
+        tool_search_local_docs,         # NEW: Local document search
+        tool_search_food_database,      # NEW: Database search
+        tool_search_online,             # NEW: Online search
+    ]
+
     agent = create_agent(
         model=model,
-        tools=[search_healthy_options, store_nutrition_case],
+        tools=tools,
         system_prompt=system_prompt,
         checkpointer=checkpointer,
         response_format=NutritionAgentResponse,
@@ -155,6 +226,26 @@ def run_agent_turn(bundle: NutritionAgentBundle, thread_id: str, user_message: H
     return result
 
 
+def run_agent_turn(bundle: NutritionAgentBundle, thread_id: str, user_message: HumanMessage):
+    """Invoke the agent with context trimming + summarization."""
+    messages = bundle.context.build_messages(thread_id=thread_id, new_message=user_message)
+
+    result = bundle.agent.invoke(
+        {"messages": messages},
+        config={"configurable": {"thread_id": thread_id}},
+    )
+
+    assistant_message = None
+    if isinstance(result, dict) and result.get("messages"):
+        assistant_message = result["messages"][-1]
+
+    if assistant_message is None:
+        assistant_message = AIMessage(content=str(result.get("structured_response")))
+
+    bundle.context.update(thread_id=thread_id, user_message=user_message, assistant_message=assistant_message)
+    return result
+
+
 def run_nutrition_analysis(
     bundle: NutritionAgentBundle,
     thread_id: str,
@@ -169,12 +260,19 @@ def run_nutrition_analysis(
 
 
 def run_nutrition_followup(bundle: NutritionAgentBundle, thread_id: str, question: str):
-    """Step 2: handle user questions or requests with tools if needed."""
+    """
+    Step 2: handle user questions or requests with tools if needed.
+
+    Day 3: Uses intelligent tool selection (local docs, database, online search).
+    """
     question = question.strip()
     user_msg = HumanMessage(
         content=(
             "workflow_step=2\n"
-            "Use tools if needed. Return NutritionAgentResponse. "
+            "Use tools if needed (but only if necessary). Return NutritionAgentResponse. "
+            "Tool guidance: use search_food_database for specific food nutrition, "
+            "use search_local_docs for general nutrition concepts, "
+            "use search_online for latest research. Don't use tools for common knowledge. "
             f"User question: {question}"
         )
     )

@@ -48,12 +48,36 @@ export default function MessageBubble({
 
         {payloadType === "nutrition" && nutritionPayload && (
           <div className="space-y-3">
+            {(nutritionPayload.source_used || nutritionPayload.confidence) && (
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                {nutritionPayload.source_used && (
+                  <span className="rounded-full border border-cyan-300/30 bg-cyan-400/10 px-2.5 py-1 text-cyan-200">
+                    Source: {nutritionPayload.source_used}
+                  </span>
+                )}
+                {nutritionPayload.confidence && (
+                  <span className="rounded-full border border-amber-300/30 bg-amber-400/10 px-2.5 py-1 text-amber-200">
+                    Confidence: {nutritionPayload.confidence}
+                  </span>
+                )}
+              </div>
+            )}
             <NutritionCard
               analysis={nutritionPayload.analysis}
               onSaveCase={onChooseMeal}
               disabled={selectingMeal}
             />
             <SearchResultsCard results={nutritionPayload.search_results} />
+            {nutritionPayload.references?.length > 0 && (
+              <div className="rounded-xl border border-white/10 bg-slate-900/70 p-3 text-xs text-slate-300">
+                <p className="mb-2 font-semibold text-cyan-200">References</p>
+                <ul className="list-disc space-y-1 pl-4">
+                  {nutritionPayload.references.map((item, index) => (
+                    <li key={`ref-${index}`}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {nutritionPayload.storage_message && (
               <div className="rounded-xl border border-emerald-300/20 bg-emerald-400/10 p-3 text-xs text-emerald-200">
                 {nutritionPayload.storage_message}
