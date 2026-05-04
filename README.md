@@ -1,148 +1,296 @@
-# AI Chef Assistant
+# AI Chef Assistant → Nutrition AI Agent → RAG Agent
 
-Beginner-friendly modular Python version of the instructor GenAI lab (without notebook).
+An evolving Generative AI project built across Advanced GenAI labs.
 
-## Project Structure
+This project was developed progressively over 3 stages:
 
-- app.py
-- chef_agent.py
-- schemas.py
-- config.py
-- utils.py
-- requirements.txt
-- .env.example
-- README.md
+- Day 1: AI Chef Assistant (LLM + Workflow)
+- Day 2: Nutrition Agent (Tools + Agentic AI)
+- Day 3: RAG Agent (Multi-source retrieval + reasoning)
 
-## Tech Used
+---
 
-- Python
-- LangChain
-- langchain_openai
-- langgraph memory/checkpointer (`InMemorySaver`)
-- Pydantic structured output
-- langchain-ollama
-- python-dotenv
+# Project Overview
 
-## What the app does
+This project demonstrates how a simple LLM application evolves into a full **Agentic AI system**.
 
-- Accepts ingredients from text (and optional image)
-- Follows strict conversation workflow (never skips):
+It combines:
+- Memory
+- Tool usage
+- Context engineering
+- Retrieval (RAG)
+- Multi-source reasoning
+
+---
+
+# Features
+
+## Day 1 — AI Chef Assistant
+
+- Accepts ingredients (text + optional image)
+- Follows strict step-by-step workflow:
   1. Analyze ingredients
   2. Suggest meals
   3. Ask user preference
   4. Confirm meal
-  5. Return final recipe
-- Remembers context by `thread_id`
-- Supports strict vs creative mode
-- Supports concise vs detailed mode
-- Supports OpenAI and Ollama (mistral) with the same flow
+  5. Return recipe
+- Human-like chef persona
+- Structured output (Pydantic)
+- Memory using `thread_id`
+- OpenAI + Ollama support
 
-## Setup in VS Code
+---
 
-1. Open this folder in VS Code.
-2. Create a virtual environment.
-3. Install dependencies:
+## Day 2 — Nutrition AI Agent
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+Extended the assistant into an Agent:
 
-4. Create `.env` from `.env.example` and add your OpenAI key:
+- Nutrition analysis (calories, protein, carbs, fat)
+- Meal recommendations
+- Tool calling system
+- Search tool (restaurants / groceries)
+- CSV storage tool (nutrition logs)
+- Context optimization (message trimming + summarization)
+- Multi-modal food understanding
 
-   ```env
-   OPENAI_API_KEY=your_real_key_here
-   ```
+---
 
-## Run OpenAI Version
+## Day 3 — RAG Multi-Source Agent
+
+Upgraded into a Retrieval-Augmented Generation (RAG) system:
+
+### Multi-Source Knowledge
+
+Agent can retrieve information from:
+
+- Local files (knowledge base)
+- Database (structured data)
+- Online search (external info)
+
+---
+
+### Intelligent Tool Selection
+
+Agent decides dynamically:
+
+- Use database → for structured nutrition facts  
+- Use local files → for general knowledge  
+- Use search → for up-to-date information  
+
+---
+
+### RAG Capabilities
+
+- Local document retrieval
+- Query-based search
+- Context-aware responses
+- Source attribution (file / db / search)
+
+---
+
+# Tech Stack
+
+## Backend
+- Python
+- LangChain
+- LangGraph (memory)
+- FastAPI
+- Pydantic
+- python-dotenv
+
+## Frontend
+- React
+- Vite
+- Tailwind CSS
+
+## Models
+- OpenAI (GPT-4o-mini)
+- Ollama (Mistral)
+
+---
+
+# Project Structure
 
 ```bash
-python app.py
+.
+├── app.py
+├── chef_agent.py
+├── schemas.py
+├── config.py
+├── utils.py
+├── tools.py            # Day2 tools
+├── middleware.py       # Context optimization
+├── rag.py              # Day3 retrieval logic
+├── db.py               # Local database
+├── data/               # Local knowledge files
+│
+├── backend_api/
+│   └── main.py
+│
+├── frontend/
+├── requirements.txt
+└── README.md
 ```
 
-When prompted:
+---
 
-- choose `openai`
-- choose mode values
-- enter ingredients
-- optionally add image path
+# Architecture
 
-## New Web App Upgrade (FastAPI + React)
+```text
+User
+↓
+CLI / React UI
+↓
+FastAPI Backend
+↓
+AI Agent
+├── Memory (LangGraph)
+├── Tool Calling
+├── RAG (Files + DB + Search)
+└── Structured Output
+```
 
-This project now includes:
+---
 
-- `backend_api/` (FastAPI wrapper reusing existing agent logic)
-- `frontend/` (Vite + React + Tailwind UI)
+# Setup
 
-### 1) Install Python dependencies
+## 1 Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2) Run FastAPI backend
+---
 
-From project root:
+## 2 Setup environment variables
 
-```bash
-uvicorn backend_api.main:app --reload --host 127.0.0.1 --port 8000
+Create `.env`:
+
+```env
+OPENAI_API_KEY=your_key_here
 ```
 
-API endpoints:
+---
 
-- `POST /chat/start`
-- `POST /chat/select-meal`
-- `POST /chat/confirm`
-- `POST /upload-image`
-- `GET /history/{thread_id}`
+# Run Project
 
-### 3) Run React frontend
-
-Open a second terminal:
-
-```bash
-cd frontend
-cp .env.example .env
-npm install
-npm run dev
-```
-
-Frontend runs on `http://127.0.0.1:5173`.
-
-### 4) Backend + frontend connection
-
-- Frontend uses `VITE_API_BASE_URL` in `frontend/.env`
-- Default value: `http://127.0.0.1:8000`
-- CORS is already enabled in backend for:
-  - `http://localhost:5173`
-  - `http://127.0.0.1:5173`
-
-### 5) Keep CLI version unchanged
-
-Your original CLI flow still works:
+## CLI Version
 
 ```bash
 python app.py
 ```
 
-## Run Ollama Version (mistral)
+---
 
-1. Install Ollama from official site.
-2. Pull model:
+## FastAPI Backend
 
-   ```bash
-   ollama pull mistral
-   ```
+```bash
+uvicorn backend_api.main:app --reload
+```
 
-3. Start using the same app:
+---
 
-   ```bash
-   python app.py
-   ```
+## React Frontend
 
-4. When prompted, choose `ollama`.
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-## Notes
+Runs on:
+```
+http://127.0.0.1:5173
+```
 
-- OpenAI key is loaded from `.env` using `python-dotenv`.
-- Image input support is optional and depends on model capability.
-- The code is intentionally simple with many comments for learning.
+---
+
+# Example Flow
+
+```text
+User inputs meal
+↓
+Agent analyzes nutrition
+↓
+User asks for healthy options
+↓
+Agent decides:
+   → search tool OR
+   → database OR
+   → local files
+↓
+Agent responds with best source
+```
+
+---
+
+# Concepts Covered
+
+## Day 1
+- Prompt Engineering
+- Structured Output
+- Memory
+- Multimodal Input
+
+## Day 2
+- Agents
+- Tool Calling
+- Context Engineering
+- Middleware
+
+## Day 3
+- RAG (Retrieval-Augmented Generation)
+- Multi-source reasoning
+- Tool selection logic
+- Knowledge integration
+
+---
+
+# Safety
+
+- No medical diagnosis
+- No strict diet plans
+
+Disclaimer:
+
+```
+This is not medical advice.
+Consult a professional for dietary decisions.
+```
+
+---
+
+# Git Workflow
+
+```bash
+main
+feature/day1-chef
+feature/day2-nutrition-agent
+feature/day3-rag-agent
+```
+
+---
+
+# Future Improvements
+
+- Vector database (FAISS / Chroma)
+- RAG embeddings
+- Multi-agent systems
+- Personalized nutrition planning
+- Dashboard analytics
+
+---
+
+# Summary
+
+This project demonstrates the transition from:
+
+```
+LLM → Agent → RAG System
+```
+
+and reflects real-world GenAI application architecture.
+
+---
+
+Built as part of Advanced Generative AI Labs.
